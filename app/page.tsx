@@ -6,7 +6,26 @@ import MessageArea from "../components/messagearea";
 import PictureBar from "../components/picturebar";
 import { Channel, MessageItem } from "../logic/types";
 
+  // 🔴 page.tsx の上部または別ファイルでダミーデータを多めに生成（例: 120件）
+const ALL_MOCK_ITEMS: MessageItem[] = Array.from({ length: 120 }, (_, i) => {
+  const id = i + 1;
+  return {
+    id,
+    channelId: 2, // 開発中のデフォルトチャンネルID
+    type: id % 10 === 0 ? "image" : "text",
+    content: id % 10 === 0 
+      ? `ダミー画像メッセージ #${id}` 
+      : `これはダミーメッセージ #${id} です。テスト用に長めのテキストを入れています。`,
+    url: id % 10 === 0 ? "https://picsum.photos/400/300" : undefined,
+    time: "12:00",
+    tags: id % 5 === 0 ? ["テスト", "重要"] : undefined,
+  };
+});
+const LIMIT = 50; // 1回に読み込む件数
+
 export default function Home() {
+  
+  
   const [channels, setChannels] = useState<Channel[]>([
     { id: 1, name: "全般・画像保存" },
     { id: 2, name: "テキストメモ" },
@@ -14,16 +33,70 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeChannelId, setActiveChannelId] = useState<number>(1);
   const [isImageSidebarOpen, setIsImageSidebarOpen] = useState(false);
-  const [items, setItems] = useState<MessageItem[]>([
+  /*const [items, setItems] = useState<MessageItem[]>([
     { id: 1, channelId: 1, type: "text", content: "7月のバイト代でラズパイ5買うぞ！💪", time: "12:34" },
     { id: 2, channelId: 1, type: "image", content: "聖女様のイラスト", url: "https://chunithm.sega.jp/storage/chara/chunithm-sun/illustration/s_others_4.webp?_=20260701.190431", time: "13:00" },
     {id:4,channelId: 1,type:"image",content:"ノワさんのイラスト",url:"https://chunithm.sega.jp/storage/chara/chunithm-mate/illustration/m_3.webp",time:"11:88",tags:["illust"]},
     { id: 3, channelId: 2, type: "text", content: "ここにRailsのAPI設計メモを書く予定", time: "15:00" },
-  ]);
+  ]);*/
   const [inputText, setInputText] = useState("");
+  // 🔴 全データ（ALL_MOCK_ITEMS）から最新50件を切り出して初期Stateにする
+  const [items, setItems] = useState<MessageItem[]>([
+    ...ALL_MOCK_ITEMS.slice(-LIMIT),
+
+    {
+      id: 151,
+      channelId: 1,
+      type: "text",
+      content: "7月のバイト代でラズパイ5買うぞ！💪",
+      time: "12:34",
+    },
+    {
+      id: 152,
+      channelId: 1,
+      type: "image",
+      content: "聖女様のイラスト",
+      url: "https://chunithm.sega.jp/storage/chara/chunithm-sun/illustration/s_others_4.webp?_=20260701.190431",
+      time: "13:00",
+    },
+    {
+      id: 154,
+      channelId: 1,
+      type: "image",
+      content: "ノワさんのイラスト",
+      url: "https://chunithm.sega.jp/storage/chara/chunithm-mate/illustration/m_3.webp",
+      time: "11:88",
+      tags: ["illust"],
+    },
+    {
+      id: 153,
+      channelId: 2,
+      type: "text",
+      content: "ここにRailsのAPI設計メモを書く予定",
+      time: "15:00",
+    },
+  ]);
+
+  // 🔴 まだ読み込めていない過去ログが存在するか判定
+  const oldestId = items.length > 0 ? items[0].id : 1;
+  const hasMore = ALL_MOCK_ITEMS.some((m) => m.id < oldestId);
+
+  // 🔴 過去ログを読み込むモック関数
+  const handleLoadMore = () => {
+    if (!hasMore) return;
+
+    // 現在表示している一番古いID（oldestId）より小さいメッセージをさらに過去50件取得
+    const olderMessages = ALL_MOCK_ITEMS
+      .filter((m) => m.id < oldestId)
+      .slice(-LIMIT);
+
+    // 配列の先頭に過去ログをガッチャンコ！
+    setItems((prev) => [...olderMessages, ...prev]);
+  };
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [attachedTags, setAttachedTags] = useState<string[]>([]);//tagに関するstate
   const [attachedImage, setAttachedImage] = useState<{ url: string; name: string } | null>(null);
+  
 
   // タグを追加する関数
   const handleAddTag = (tag: string) => {
@@ -176,6 +249,7 @@ export default function Home() {
     });
   };
 
+
   return (
     <div className="flex h-screen bg-[#313338] text-[#dbdee1] font-sans antialiased overflow-hidden relative">
       {/* 1. 左側：チャンネルバー */}
@@ -211,6 +285,8 @@ export default function Home() {
         attachedTags={attachedTags}
         onAddTag={handleAddTag}
         onRemoveTag={handleRemoveTag}
+        hasMore={hasMore}             // 👈 過去ログがあるか
+        onLoadMore={handleLoadMore}   // 👈 読み込み関数
       />
 
       {/* 3. 右側：画像一覧バー */}

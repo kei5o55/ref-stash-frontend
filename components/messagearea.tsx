@@ -1,6 +1,6 @@
 import { MutableRefObject } from "react";
 import { Channel, MessageItem } from "../logic/types";
-import { useState,useEffect,useRef } from "react";
+import { useState,useEffect,useLayoutEffect,useRef } from "react";
 
 interface MessageAreaProps {
   currentChannel?: Channel;
@@ -24,6 +24,8 @@ interface MessageAreaProps {
   attachedTags: string[];
   onAddTag: (tag: string) => void;
   onRemoveTag: (tag: string) => void;
+  hasMore: boolean;
+  onLoadMore: () => void;
 }
 
 export default function MessageArea({
@@ -47,7 +49,49 @@ export default function MessageArea({
   attachedTags,
   onAddTag,
   onRemoveTag,
+  hasMore,
+  onLoadMore,
 }: MessageAreaProps) {
+    // 📜 1. タイムライン表示エリア用の Ref を作成
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 📜 画面のスクロール位置補正用 State & Ref
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const previousScrollHeightRef = useRef<number>(0);
+
+  // 「もっと読み込む」ボタンが押された時の処理
+  const handleLoadMoreClick = () => {
+    if (scrollRef.current) {
+      // 読み込み前の全体の高さを記憶しておく
+      previousScrollHeightRef.current = scrollRef.current.scrollHeight;
+    }
+    setIsLoadingMore(true);
+    onLoadMore();
+  };
+
+  // 📜 配列更新後のスクロール位置を調整する（画面のチラつきを防ぐため useLayoutEffect を使用）
+  useLayoutEffect(() => {
+    if (!scrollRef.current) return;
+
+    if (isLoadingMore) {
+      // 過去ログ追加後：増えた分の高さ（差分）を計算してスクロール位置を調整！
+      const newScrollHeight = scrollRef.current.scrollHeight;
+      const heightDifference = newScrollHeight - previousScrollHeightRef.current;
+      scrollRef.current.scrollTop = heightDifference;
+      setIsLoadingMore(false);
+    }
+  }, [filteredItems, isLoadingMore]);
+
+  // 📜 新規メッセージ送信時などの最下部スクロール（既存処理を少し調整）
+  useEffect(() => {
+    // 過去ログ読み込み中でない、かつ一番下近くにいる時だけ最下部へスクロール
+    if (!isLoadingMore && scrollRef.current) {
+      // 初期描画時などの自動スクロール
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
+  }, [filteredItems.length]);
+
+
   // 🎯 ドラッグ中かどうかのフラグ
   const [isDragging, setIsDragging] = useState(false);
   // タグ入力欄用のState
@@ -86,18 +130,7 @@ export default function MessageArea({
     onDrop(e);
   };
 
-    // 📜 1. タイムライン表示エリア用の Ref を作成
-  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 📜 2. メッセージ一覧（filteredItems）が更新されたら自動で一番下までスクロール
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: "smooth", // 👈 スッと滑らかにスクロール（一瞬で飛ばしたい場合は "auto"）
-      });
-    }
-  }, [filteredItems]); // filteredItems の中身や件数が変わるたびに実行
 
   return (
     <div 
@@ -171,6 +204,18 @@ export default function MessageArea({
 
       {/* メッセージ表示エリア */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* 🔄 ↓ 過去ログ読み込みボタン */}
+        {hasMore && (
+          <div className="flex justify-center my-2">
+            <button
+              onClick={handleLoadMoreClick}
+              className="px-4 py-1.5 text-xs font-medium text-[#dbdee1] bg-[#2b2d31] hover:bg-[#35373c] border border-[#1e1f22] rounded-full transition cursor-pointer shadow-sm"
+            >
+              過去のメッセージを読み込む
+            </button>
+          </div>
+        )}
+        {/* 🔄 ↑ ここまで */}
         {filteredItems.map((item) => (
             <div 
             ref={(el) => { messageRefs.current[item.id] = el; }}
@@ -258,7 +303,7 @@ export default function MessageArea({
             </div>
           )}
           {/* 🖼️ ↑ ここまでプレビューエリア */}
-          
+
           {/* 🏷️ ↓ 添付中タグのバッジ＆タグ追加インプット */}
           <div className="px-5 pt-3 flex flex-wrap items-center gap-2">
             {attachedTags.map((tag) => (
