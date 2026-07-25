@@ -33,12 +33,6 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeChannelId, setActiveChannelId] = useState<number>(1);
   const [isImageSidebarOpen, setIsImageSidebarOpen] = useState(false);
-  /*const [items, setItems] = useState<MessageItem[]>([
-    { id: 1, channelId: 1, type: "text", content: "7月のバイト代でラズパイ5買うぞ！💪", time: "12:34" },
-    { id: 2, channelId: 1, type: "image", content: "聖女様のイラスト", url: "https://chunithm.sega.jp/storage/chara/chunithm-sun/illustration/s_others_4.webp?_=20260701.190431", time: "13:00" },
-    {id:4,channelId: 1,type:"image",content:"ノワさんのイラスト",url:"https://chunithm.sega.jp/storage/chara/chunithm-mate/illustration/m_3.webp",time:"11:88",tags:["illust"]},
-    { id: 3, channelId: 2, type: "text", content: "ここにRailsのAPI設計メモを書く予定", time: "15:00" },
-  ]);*/
   const [inputText, setInputText] = useState("");
   // 🔴 全データ（ALL_MOCK_ITEMS）から最新50件を切り出して初期Stateにする
   const [items, setItems] = useState<MessageItem[]>([
@@ -76,6 +70,14 @@ export default function Home() {
       time: "15:00",
     },
   ]);
+  // 🔴 メッセージ本文を更新する関数
+  const handleEditMessage = (id: number, newContent: string) => {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, content: newContent, isEdited: true } : item
+      )
+    );
+  };
 
   // 🔴 まだ読み込めていない過去ログが存在するか判定
   const oldestId = items.length > 0 ? items[0].id : 1;
@@ -287,6 +289,7 @@ export default function Home() {
         onRemoveTag={handleRemoveTag}
         hasMore={hasMore}             // 👈 過去ログがあるか
         onLoadMore={handleLoadMore}   // 👈 読み込み関数
+        onEditMessage={handleEditMessage}
       />
 
       {/* 3. 右側：画像一覧バー */}
