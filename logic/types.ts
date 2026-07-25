@@ -11,4 +11,6 @@ export interface MessageItem {
   content: string;
   url?: string;
   time: string;
+  tags?: string[]; //複数タグを保持する配列
+  isEdited?:boolean;
 }
