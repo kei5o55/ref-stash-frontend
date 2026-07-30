@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import ChannnelBar from "../components/channnelbar";
 import MessageArea from "../components/messagearea";
 import PictureBar from "../components/picturebar";
+import HealthCheckButton from "@/components/HealthCheckButton";
 import { Channel, MessageItem } from "../logic/types";
 
   // 🔴 page.tsx の上部または別ファイルでダミーデータを多めに生成（例: 120件）
@@ -299,6 +300,7 @@ export default function Home() {
         setIsImageSidebarOpen={setIsImageSidebarOpen}
         onScrollToMessage={scrollToMessage}
       />
+      <HealthCheckButton></HealthCheckButton>
     </div>
   );
 }
