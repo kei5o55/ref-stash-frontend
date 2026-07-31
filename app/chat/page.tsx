@@ -1,19 +1,24 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createConsumer } from "@rails/actioncable";
 import { Channel, MessageItem } from "../../logic/chat";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+
+// HTTP(S) の URL から WS(S) の WebSocket URL を自動生成
+// 例: http://localhost:3000 -> ws://localhost:3000/cable
+const WS_BASE_URL = API_BASE_URL.replace(/^http/, "ws") + "/cable";
 
 export default function ChatPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
-  
+
   // 送信フォーム用 State
   const [content, setContent] = useState("");
   const [messageType, setMessageType] = useState<"text" | "image">("text");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null); // Active Storage用のファイルオブジェクト
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [tagInput, setTagInput] = useState("");
 
   useEffect(() => {
@@ -41,28 +46,55 @@ export default function ChatPage() {
       .catch((err) => console.error("Messages fetch error:", err));
   }, [selectedChannelId]);
 
-  // 3. メッセージ投稿処理 (FormData 形式に更新)
+  // ⚡️ 3. Action Cable（WebSocket）のリアルタイム受信処理
+  useEffect(() => {
+    if (!selectedChannelId) return;
+
+    // Action Cable の Consumer を生成
+    const consumer = createConsumer(WS_BASE_URL);
+
+    // 選択されたチャンネル部屋を購読 (Subscribe)
+    const subscription = consumer.subscriptions.create(
+      { channel: "MessagesChannel", channel_id: selectedChannelId },
+      {
+        received(newMessage: MessageItem) {
+          // 他端末（または自分）から送信された新着メッセージを即座に State に追加
+          setMessages((prev) => {
+            // 重複追加の防止（既にリストに同じIDがあれば追加しない）
+            if (prev.some((msg) => msg.id === newMessage.id)) {
+              return prev;
+            }
+            return [...prev, newMessage];
+          });
+        },
+      }
+    );
+
+    // チャンネル変更時やコンポーネントのアンマウント時に接続を解除
+    return () => {
+      subscription.unsubscribe();
+      consumer.disconnect();
+    };
+  }, [selectedChannelId]);
+
+  // 4. メッセージ投稿処理 (FormData 形式)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChannelId || (!content.trim() && !selectedFile)) return;
 
-    // カンマ区切りでタグを配列化 ("重要, テスト" -> ["重要", "テスト"])
     const tags = tagInput
       .split(",")
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
-    // 画像添付対応のため FormData を組み立てる
     const formData = new FormData();
     formData.append("content", content);
     formData.append("type", messageType);
-    
-    // Active Storage 送信用にファイルオブジェクトを追加
+
     if (messageType === "image" && selectedFile) {
       formData.append("image", selectedFile);
     }
 
-    // 配列データの追加 (Rails 側で params[:tags] として配列受取)
     tags.forEach((tag) => {
       formData.append("tags[]", tag);
     });
@@ -72,15 +104,20 @@ export default function ChatPage() {
         `${API_BASE_URL}/api/v1/channels/${selectedChannelId}/messages`,
         {
           method: "POST",
-          // ※ FormData 送信時は Content-Type ヘッダーを明示的に指定しない（ブラウザが境界線を自動付与するため）
           body: formData,
         }
       );
 
       if (res.ok) {
+        // ※ サーバー側で MessagesChannel.broadcast_to を実行している場合、
+        // WebSocket 経由で received() が発火するため、ここでは State 追加を行わなくても自動更新されます。
+        // （重複防止ロジックが入っているため、ここで追加しても問題ありません）
         const newMessage: MessageItem = await res.json();
-        setMessages((prev) => [...prev, newMessage]);
-        
+        setMessages((prev) => {
+          if (prev.some((msg) => msg.id === newMessage.id)) return prev;
+          return [...prev, newMessage];
+        });
+
         // フォームのリセット
         setContent("");
         setSelectedFile(null);
