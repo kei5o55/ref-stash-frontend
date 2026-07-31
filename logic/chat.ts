@@ -1,27 +1,15 @@
-export type User = {
+export interface Channel {
   id: number;
   name: string;
-  email?: string;
-};
+}
 
-// スキーマの attachments テーブル（file_name, path）に合わせた型
-export type Attachment = {
+export interface MessageItem {
   id: number;
-  file_name?: string;
-  path?: string;
-  created_at: string;
-};
-
-export type Message = {
-  id: number;
+  channelId: number;
+  type: "text" | "image";
   content: string;
-  created_at: string;
-  user: User;
-  attachments?: Attachment[];
-};
-
-export type Channel = {
-  id: number;
-  name: string;
-  created_at: string;
-};
+  url?: string;
+  time: string;
+  tags?: string[];
+  isEdited?: boolean;
+}
