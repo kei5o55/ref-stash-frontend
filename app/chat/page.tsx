@@ -13,10 +13,10 @@ export default function ChatPage() {
   // 送信フォーム用 State
   const [content, setContent] = useState("");
   const [messageType, setMessageType] = useState<"text" | "image">("text");
-  const [url, setUrl] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null); // Active Storage用のファイルオブジェクト
   const [tagInput, setTagInput] = useState("");
+
   useEffect(() => {
-    // ブラウザのコンソール（F12）で実際の参照先を確認
     console.log("Current API_BASE_URL:", API_BASE_URL);
   }, []);
 
@@ -41,10 +41,10 @@ export default function ChatPage() {
       .catch((err) => console.error("Messages fetch error:", err));
   }, [selectedChannelId]);
 
-  // 3. メッセージ投稿処理
+  // 3. メッセージ投稿処理 (FormData 形式に更新)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedChannelId || !content.trim()) return;
+    if (!selectedChannelId || (!content.trim() && !selectedFile)) return;
 
     // カンマ区切りでタグを配列化 ("重要, テスト" -> ["重要", "テスト"])
     const tags = tagInput
@@ -52,22 +52,28 @@ export default function ChatPage() {
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
-    const payload = {
-      message: {
-        content,
-        type: messageType,
-        url: messageType === "image" ? url : undefined,
-        tags,
-      },
-    };
+    // 画像添付対応のため FormData を組み立てる
+    const formData = new FormData();
+    formData.append("content", content);
+    formData.append("type", messageType);
+    
+    // Active Storage 送信用にファイルオブジェクトを追加
+    if (messageType === "image" && selectedFile) {
+      formData.append("image", selectedFile);
+    }
+
+    // 配列データの追加 (Rails 側で params[:tags] として配列受取)
+    tags.forEach((tag) => {
+      formData.append("tags[]", tag);
+    });
 
     try {
       const res = await fetch(
         `${API_BASE_URL}/api/v1/channels/${selectedChannelId}/messages`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          // ※ FormData 送信時は Content-Type ヘッダーを明示的に指定しない（ブラウザが境界線を自動付与するため）
+          body: formData,
         }
       );
 
@@ -77,8 +83,9 @@ export default function ChatPage() {
         
         // フォームのリセット
         setContent("");
-        setUrl("");
+        setSelectedFile(null);
         setTagInput("");
+        setMessageType("text");
       } else {
         console.error("Failed to post message");
       }
@@ -134,14 +141,14 @@ export default function ChatPage() {
               {/* 本文表示 */}
               <p style={{ margin: "0 0 8px 0", whiteSpace: "pre-wrap" }}>{msg.content}</p>
 
-              {/* 画像タイプの場合の画像表示 */}
+              {/* Active Storage から返却された画像 URL (msg.url) を表示 */}
               {msg.type === "image" && msg.url && (
                 <div style={{ marginTop: "8px" }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={msg.url}
                     alt="投稿画像"
-                    style={{ maxWidth: "300px", maxHeight: "200px", borderRadius: "6px" }}
+                    style={{ maxWidth: "300px", maxHeight: "200px", borderRadius: "6px", objectFit: "cover" }}
                   />
                 </div>
               )}
@@ -203,13 +210,13 @@ export default function ChatPage() {
             />
           </div>
 
+          {/* タイプが Image の場合はファイル選択用の input を表示 */}
           {messageType === "image" && (
             <input
-              type="text"
-              placeholder="画像URL (例: https://example.com/image.png)"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              style={{ padding: "6px", fontSize: "0.85rem" }}
+              type="file"
+              accept="image/*"
+              onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+              style={{ padding: "4px", fontSize: "0.85rem" }}
             />
           )}
 
