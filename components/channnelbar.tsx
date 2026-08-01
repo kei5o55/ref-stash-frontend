@@ -2,7 +2,7 @@ import { Channel } from "../logic/types";
 
 interface ChannnelBarProps {
   channels: Channel[];
-  activeChannelId: number;
+  activeChannelId: number|null;//要修正
   setActiveChannelId: (id: number) => void;
   isMenuOpen: boolean;
   setIsMenuOpen: (open: boolean) => void;

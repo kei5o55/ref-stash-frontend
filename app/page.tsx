@@ -1,77 +1,204 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createConsumer } from "@rails/actioncable";
 import ChannnelBar from "../components/channnelbar";
 import MessageArea from "../components/messagearea";
 import PictureBar from "../components/picturebar";
 import HealthCheckButton from "@/components/HealthCheckButton";
 import { Channel, MessageItem } from "../logic/types";
 
-  // 🔴 page.tsx の上部または別ファイルでダミーデータを多めに生成（例: 120件）
-const ALL_MOCK_ITEMS: MessageItem[] = Array.from({ length: 120 }, (_, i) => {
-  const id = i + 1;
-  return {
-    id,
-    channelId: 2, // 開発中のデフォルトチャンネルID
-    type: id % 10 === 0 ? "image" : "text",
-    content: id % 10 === 0 
-      ? `ダミー画像メッセージ #${id}` 
-      : `これはダミーメッセージ #${id} です。テスト用に長めのテキストを入れています。`,
-    url: id % 10 === 0 ? "https://picsum.photos/400/300" : undefined,
-    time: "12:00",
-    tags: id % 5 === 0 ? ["テスト", "重要"] : undefined,
-  };
-});
-const LIMIT = 50; // 1回に読み込む件数
+// --- 変更後 ---
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+
+// 動的に WebSocket の URL を取得する関数
+const getWsUrl = () => {
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const host = window.location.hostname; // スマホが開いている IP (例: 192.168.x.x) を取得
+    const port = "3000"; // Rails サーバーのポート番号
+    return `${protocol}//${host}:${port}/cable`;
+  }
+  return API_BASE_URL.replace(/^http/, "ws") + "/cable";
+};
 
 export default function Home() {
-  
-  
-  const [channels, setChannels] = useState<Channel[]>([
-    { id: 1, name: "全般・画像保存" },
-    { id: 2, name: "テキストメモ" },
-  ]);
+  const [channels, setChannels] = useState<Channel[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeChannelId, setActiveChannelId] = useState<number>(1);
+  const [activeChannelId, setActiveChannelId] = useState<number | null>(null);
   const [isImageSidebarOpen, setIsImageSidebarOpen] = useState(false);
   const [inputText, setInputText] = useState("");
-  // 🔴 全データ（ALL_MOCK_ITEMS）から最新50件を切り出して初期Stateにする
-  const [items, setItems] = useState<MessageItem[]>([
-    ...ALL_MOCK_ITEMS.slice(-LIMIT),
+  const [items, setItems] = useState<MessageItem[]>([]);
+  
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [attachedTags, setAttachedTags] = useState<string[]>([]);
+  // 画像添付用 (Fileオブジェクト保持)
+  const [attachedImageFile, setAttachedImageFile] = useState<File | null>(null);
+  // 画像プレビュー表示用
+  const [attachedImagePreview, setAttachedImagePreview] = useState<{ url: string; name: string } | null>(null);
 
-    {
-      id: 151,
-      channelId: 1,
-      type: "text",
-      content: "7月のバイト代でラズパイ5買うぞ！💪",
-      time: "12:34",
-    },
-    {
-      id: 152,
-      channelId: 1,
-      type: "image",
-      content: "聖女様のイラスト",
-      url: "https://chunithm.sega.jp/storage/chara/chunithm-sun/illustration/s_others_4.webp?_=20260701.190431",
-      time: "13:00",
-    },
-    {
-      id: 154,
-      channelId: 1,
-      type: "image",
-      content: "ノワさんのイラスト",
-      url: "https://chunithm.sega.jp/storage/chara/chunithm-mate/illustration/m_3.webp",
-      time: "11:88",
-      tags: ["illust"],
-    },
-    {
-      id: 153,
-      channelId: 2,
-      type: "text",
-      content: "ここにRailsのAPI設計メモを書く予定",
-      time: "15:00",
-    },
-  ]);
-  // 🔴 メッセージ本文を更新する関数
+  // 1. バックエンドからチャンネル一覧を取得
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/v1/channels`)
+      .then((res) => res.json())
+      .then((data: Channel[]) => {
+        setChannels(data);
+        if (data.length > 0) setActiveChannelId(data[0].id);
+      })
+      .catch((err) => console.error("Channels fetch error:", err));
+  }, []);
+
+ // 2. 選択中チャンネルのメッセージ取得 & Action Cable リアルタイム受信
+  useEffect(() => {
+    if (!activeChannelId) return;
+
+    // メッセージの初期取得
+    fetch(`${API_BASE_URL}/api/v1/channels/${activeChannelId}/messages`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setItems(data);
+        } else if (data && Array.isArray(data.messages)) {
+          setItems(data.messages);
+        } else {
+          console.error("Received non-array data:", data);
+          setItems([]);
+        }
+      })
+      .catch((err) => {
+        console.error("Messages fetch error:", err);
+        setItems([]);
+      });
+
+    // ⚡️ 動的 URL を使って Action Cable WebSocket 接続の設定
+    const wsUrl = getWsUrl();
+    const consumer = createConsumer(wsUrl);
+
+    const subscription = consumer.subscriptions.create(
+      { channel: "MessagesChannel", channel_id: activeChannelId },
+      {
+        received(newMessage: MessageItem) {
+          setItems((prev) => {
+            const current = Array.isArray(prev) ? [...prev] : [];
+            // すでに存在していれば更新しない
+            if (current.some((item) => item.id === newMessage.id)) {
+              return current;
+            }
+            // 新しい参照を作成して追加（これで確実に再レンダリングをトリガー）
+            return [...current, newMessage];
+          });
+        },
+      }
+    );
+
+    // クリーンアップ処理
+    return () => {
+      subscription.unsubscribe();
+      consumer.disconnect();
+    };
+  }, [activeChannelId]);
+
+  // タグ追加・削除
+  const handleAddTag = (tag: string) => {
+    const formattedTag = tag.trim().replace(/^#/, "");
+    if (formattedTag && !attachedTags.includes(formattedTag)) {
+      setAttachedTags((prev) => [...prev, formattedTag]);
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setAttachedTags((prev) => prev.filter((t) => t !== tagToRemove));
+  };
+
+  // 画像選択時のアタッチ処理 (Fileを直接保持する)
+  const uploadImageFile = (file: File) => {
+    setAttachedImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setAttachedImagePreview({
+        url: event.target?.result as string,
+        name: file.name,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    uploadImageFile(files[0]);
+    e.target.value = "";
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasteItems = e.clipboardData.items;
+    for (let i = 0; i < pasteItems.length; i++) {
+      if (pasteItems[i].type.indexOf("image") !== -1) {
+        const file = pasteItems[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          uploadImageFile(file);
+          break;
+        }
+      }
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0 && files[0].type.startsWith("image/")) {
+      uploadImageFile(files[0]);
+    }
+  };
+
+  // 3. バックエンドへの送信処理 (FormData 使用)
+  const handleSend = async () => {
+    if (!inputText.trim() && !attachedImageFile) return;
+
+    const formData = new FormData();
+    formData.append("content", inputText.trim());
+    formData.append("type", attachedImageFile ? "image" : "text");
+
+    // 画像ファイルを添付 (Active Storage用)
+    if (attachedImageFile) {
+      formData.append("image", attachedImageFile);
+    }
+
+    // タグ配列の追加
+    attachedTags.forEach((tag) => {
+      formData.append("tags[]", tag);
+    });
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/v1/channels/${activeChannelId}/messages`,
+        {
+          method: "POST",
+          // ※ Content-Type ヘッダーは自動設定させるため付与しない
+          body: formData,
+        }
+      );
+
+      if (res.ok) {
+        // フォームのリセット
+        setInputText("");
+        setAttachedImageFile(null);
+        setAttachedImagePreview(null);
+        setAttachedTags([]);
+      } else {
+        console.error("送信エラー");
+      }
+    } catch (err) {
+      console.error("Post error:", err);
+    }
+  };
+
+  // メッセージ編集処理（API経由にする場合は PATCH リクエストを追加）
   const handleEditMessage = (id: number, newContent: string) => {
     setItems((prev) =>
       prev.map((item) =>
@@ -80,170 +207,47 @@ export default function Home() {
     );
   };
 
-  // 🔴 まだ読み込めていない過去ログが存在するか判定
-  const oldestId = items.length > 0 ? items[0].id : 1;
-  const hasMore = ALL_MOCK_ITEMS.some((m) => m.id < oldestId);
-
-  // 🔴 過去ログを読み込むモック関数
-  const handleLoadMore = () => {
-    if (!hasMore) return;
-
-    // 現在表示している一番古いID（oldestId）より小さいメッセージをさらに過去50件取得
-    const olderMessages = ALL_MOCK_ITEMS
-      .filter((m) => m.id < oldestId)
-      .slice(-LIMIT);
-
-    // 配列の先頭に過去ログをガッチャンコ！
-    setItems((prev) => [...olderMessages, ...prev]);
-  };
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [attachedTags, setAttachedTags] = useState<string[]>([]);//tagに関するstate
-  const [attachedImage, setAttachedImage] = useState<{ url: string; name: string } | null>(null);
-  
-
-  // タグを追加する関数
-  const handleAddTag = (tag: string) => {
-    const formattedTag = tag.trim().replace(/^#/, ""); // 先頭の # を除去して統一
-    if (formattedTag && !attachedTags.includes(formattedTag)) {
-      setAttachedTags((prev) => [...prev, formattedTag]);
-    }
-  };
-
-  // タグを削除する関数
-  const handleRemoveTag = (tagToRemove: string) => {
-    setAttachedTags((prev) => prev.filter((t) => t !== tagToRemove));
-  };
-  
-
-  // チャンネル作成のモック
-  const handleCreateChannel = () => {
-    const name = prompt("新しいチャンネル名を入力してください");
-    if (!name?.trim()) return;
-    setChannels([...channels, { id: Date.now(), name: name.trim() }]);
-  };
-
-  // メッセージ削除処理
+  // メッセージ削除処理（API経由にする場合は DELETE リクエストを追加）
   const handleDeleteMessage = (id: number) => {
     if (confirm("メッセージを削除しますか？")) {
       setItems(items.filter((item) => item.id !== id));
     }
   };
 
-  // ドロップ時のハンドラ
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // チャンネル作成処理
+  const handleCreateChannel = async () => {
+    const name = prompt("新しいチャンネル名を入力してください");
+    if (!name?.trim()) return;
 
-    const files = e.dataTransfer.files;
-    if (!files || files.length === 0) return;
-
-    // 1枚目の画像ファイルをチェックして添付処理へ
-    const file = files[0];
-    if (file.type.startsWith("image/")) {
-      uploadImageFile(file);
-    }
-  };
-
-  // テキストメッセージ送信
-  // 🔴 handleSend を修正（tagsをセットし、送信後にリセット）
-  const handleSend = () => {
-    if (!inputText.trim() && !attachedImage) return;
-
-    const newTags = attachedTags.length > 0 ? attachedTags : undefined;
-
-    if (attachedImage) {
-      setItems((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          channelId: activeChannelId,
-          type: "image",
-          content: inputText.trim() || attachedImage.name,
-          url: attachedImage.url,
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          tags: newTags, // 👈 タグを追加
-        },
-      ]);
-    } else if (inputText.trim()) {
-      setItems((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          channelId: activeChannelId,
-          type: "text",
-          content: inputText.trim(),
-          url: "",
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          tags: newTags, // 👈 タグを追加
-        },
-      ]);
-    }
-
-    // リセット
-    setInputText("");
-    setAttachedImage(null);
-    setAttachedTags([]); // 👈 送信後にタグ領域をクリア
-  };
-
-  // 画像ファイル追加（FileReaderを使ったモック）
-  // 🔴 画像ファイルを「送信」せず「一時保存」するように修正
-  const uploadImageFile = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64Url = event.target?.result as string;
-      // 即時 setItems せず、添付Stateに保持する
-      setAttachedImage({
-        url: base64Url,
-        name: file.name,
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/channels`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
       });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // 1. ファイル選択（input type="file"）時のハンドラ
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    uploadImageFile(files[0]);
-    e.target.value = ""; // 同じファイルを連続で選択できるようにリセット
-  };
-
-  // 2. コピペ（Paste）時のハンドラ
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const items = e.clipboardData.items;
-    
-    for (let i = 0; i < items.length; i++) {
-      // 貼り付けられたデータが「画像」かどうかをチェック
-      if (items[i].type.indexOf("image") !== -1) {
-        const file = items[i].getAsFile();
-        if (file) {
-          // デフォルトの貼り付け動作（テキストとしてのペーストなど）を防止
-          e.preventDefault();
-          uploadImageFile(file);
-          break; // 1枚見つかったら処理を抜ける
-        }
+      if (res.ok) {
+        const newChannel: Channel = await res.json();
+        setChannels((prev) => [...prev, newChannel]);
+        setActiveChannelId(newChannel.id);
       }
+    } catch (err) {
+      console.error("Channel create error:", err);
     }
   };
 
+  // 絞り込みロジック
   const currentChannel = channels.find((c) => c.id === activeChannelId);
-  // 1. まず現在のチャンネルで絞り込む
-  const filteredItems = items.filter((item) => item.channelId === activeChannelId);
+  const safeItems = Array.isArray(items) ? items : [];
+  const filteredItems = safeItems.filter((item) => item.channelId === activeChannelId);
 
-  // 2. さらに検索キーワードに一致するものだけを絞り込む（displayedItemsとする）
   const displayedItems = filteredItems.filter((item) => {
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase().replace(/^#/, ""); // #が付いていても検索できるように
-
-    // 1. 本文にマッチするか
+    const q = searchQuery.toLowerCase().replace(/^#/, "");
     const matchesContent = item.content.toLowerCase().includes(q);
-    // 2. タグのいずれかにマッチするか
     const matchesTag = item.tags?.some((t) => t.toLowerCase().includes(q));
-
     return matchesContent || matchesTag;
   });
 
-  // スクロール参照用のrefとスクロール関数
   const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const scrollToMessage = (id: number) => {
     messageRefs.current[id]?.scrollIntoView({
@@ -251,7 +255,6 @@ export default function Home() {
       block: "center",
     });
   };
-
 
   return (
     <div className="flex h-screen bg-[#313338] text-[#dbdee1] font-sans antialiased overflow-hidden relative">
@@ -268,11 +271,14 @@ export default function Home() {
       {/* 2. 中央：メインメッセージ画面 */}
       <MessageArea
         currentChannel={currentChannel}
-        filteredItems={displayedItems} // 👈 ここを displayedItems に変更！
-        searchQuery={searchQuery}       // 👈 追加
-        setSearchQuery={setSearchQuery} // 👈 追加
-        attachedImage={attachedImage}
-        onRemoveAttachedImage={() => setAttachedImage(null)}
+        filteredItems={displayedItems}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        attachedImage={attachedImagePreview}
+        onRemoveAttachedImage={() => {
+          setAttachedImageFile(null);
+          setAttachedImagePreview(null);
+        }}
         isMenuOpen={isMenuOpen}
         setIsMenuOpen={setIsMenuOpen}
         isImageSidebarOpen={isImageSidebarOpen}
@@ -288,8 +294,8 @@ export default function Home() {
         attachedTags={attachedTags}
         onAddTag={handleAddTag}
         onRemoveTag={handleRemoveTag}
-        hasMore={hasMore}             // 👈 過去ログがあるか
-        onLoadMore={handleLoadMore}   // 👈 読み込み関数
+        hasMore={false}
+        onLoadMore={() => {}}
         onEditMessage={handleEditMessage}
       />
 
@@ -300,7 +306,7 @@ export default function Home() {
         setIsImageSidebarOpen={setIsImageSidebarOpen}
         onScrollToMessage={scrollToMessage}
       />
-      <HealthCheckButton></HealthCheckButton>
+      {/*<HealthCheckButton />*/}
     </div>
   );
 }

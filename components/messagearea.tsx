@@ -1,6 +1,11 @@
 import { MutableRefObject } from "react";
 import { Channel, MessageItem } from "../logic/types";
+import {createConsumer} from "@rails/actioncable"
 import { useState, useEffect, useLayoutEffect, useRef } from "react";
+
+const API_BASE_URL=process.env.NEXT_PUBLIC_API_URL ||"http://localhost:3000";
+
+const WS_BASE_URL=API_BASE_URL.replace(/^http/,"ws")+"/cable";
 
 interface MessageAreaProps {
   currentChannel?: Channel;
