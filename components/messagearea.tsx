@@ -1,11 +1,10 @@
 import { MutableRefObject } from "react";
 import { Channel, MessageItem } from "../logic/types";
-import {createConsumer} from "@rails/actioncable"
-import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { createConsumer } from "@rails/actioncable";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 
-const API_BASE_URL=process.env.NEXT_PUBLIC_API_URL ||"http://localhost:3000";
-
-const WS_BASE_URL=API_BASE_URL.replace(/^http/,"ws")+"/cable";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+const WS_BASE_URL = API_BASE_URL.replace(/^http/, "ws") + "/cable";
 
 interface MessageAreaProps {
   currentChannel?: Channel;
@@ -129,10 +128,8 @@ export default function MessageArea({
   onLoadMore,
   onEditMessage,
 }: MessageAreaProps) {
-  // 📜 タイムライン表示エリア用の Ref
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 📜 画面のスクロール位置補正用 State & Ref
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const previousScrollHeightRef = useRef<number>(0);
 
@@ -163,13 +160,39 @@ export default function MessageArea({
 
   const [isDragging, setIsDragging] = useState(false);
   const [tagInput, setTagInput] = useState("");
+  const [isTagSuggestOpen, setIsTagSuggestOpen] = useState(false);
+
+  // 🏷️ 過去のメッセージから使用されているユニークな既存タグ一覧を抽出
+  const existingTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    filteredItems.forEach((item) => {
+      item.tags?.forEach((t) => tagSet.add(t));
+    });
+    return Array.from(tagSet);
+  }, [filteredItems]);
+
+  // 🔍 入力中の文字と選択済みのタグに基づいて候補をフィルタリング
+  const suggestedTags = useMemo(() => {
+    return existingTags.filter(
+      (tag) =>
+        !attachedTags.includes(tag) &&
+        tag.toLowerCase().includes(tagInput.trim().toLowerCase())
+    );
+  }, [existingTags, attachedTags, tagInput]);
+
+  const handleSelectSuggestedTag = (tag: string) => {
+    onAddTag(tag);
+    setTagInput("");
+    setIsTagSuggestOpen(false);
+  };
 
   const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       if (tagInput.trim()) {
-        onAddTag(tagInput);
+        onAddTag(tagInput.trim());
         setTagInput("");
+        setIsTagSuggestOpen(false);
       }
     }
   };
@@ -271,7 +294,6 @@ export default function MessageArea({
           </div>
         )}
 
-        {/* 🌟 修正ポイント: MessageRow コンポーネントを正しく呼び出す */}
         {filteredItems.map((item) => (
           <MessageRow
             key={item.id}
@@ -292,7 +314,7 @@ export default function MessageArea({
 
       {/* 入力フォームエリア */}
       <div className="p-6 bg-[#313338] shrink-0">
-        <div className="flex flex-col bg-[#383a40] rounded-xl overflow-hidden">
+        <div className="flex flex-col bg-[#383a40] rounded-xl overflow-hidden relative">
           {attachedImage && (
             <div className="p-3 bg-[#2b2d31] border-b border-[#1f2023] flex items-center space-x-3 relative group">
               <div className="relative w-16 h-16 rounded-md overflow-hidden border border-[#383a40] bg-[#1e1f22] shrink-0">
@@ -318,7 +340,8 @@ export default function MessageArea({
             </div>
           )}
 
-          <div className="px-5 pt-3 flex flex-wrap items-center gap-2">
+          {/* タグ表示 & タグ入力枠 */}
+          <div className="px-5 pt-3 flex flex-wrap items-center gap-2 relative">
             {attachedTags.map((tag) => (
               <span
                 key={tag}
@@ -334,18 +357,45 @@ export default function MessageArea({
               </span>
             ))}
 
-            <div className="flex items-center text-xs text-[#949ba4]">
+            <div className="relative flex items-center text-xs text-[#949ba4]">
               <span className="mr-1">#</span>
               <input
                 type="text"
                 placeholder="タグを追加 (Enterで確定)"
                 value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
+                onChange={(e) => {
+                  setTagInput(e.target.value);
+                  setIsTagSuggestOpen(true);
+                }}
+                onFocus={() => setIsTagSuggestOpen(true)}
+                onBlur={() => setTimeout(() => setIsTagSuggestOpen(false), 200)}
                 onKeyDown={handleTagKeyDown}
                 className="bg-transparent text-xs text-[#dbdee1] placeholder-[#80848e] focus:outline-none w-36"
               />
             </div>
           </div>
+
+          {/* 🏷️ 既存タグ候補の選択ポップアップ / パレット */}
+          {isTagSuggestOpen && suggestedTags.length > 0 && (
+            <div className="mx-5 my-2 p-2 bg-[#2b2d31] border border-[#1e1f22] rounded-lg shadow-lg flex flex-wrap gap-1.5 max-h-28 overflow-y-auto z-20">
+              <span className="w-full text-[10px] text-[#949ba4] font-semibold px-1">
+                既存のタグから選択:
+              </span>
+              {suggestedTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleSelectSuggestedTag(tag);
+                  }}
+                  className="inline-flex items-center text-xs text-[#dbdee1] bg-[#383a40] hover:bg-[#5865f2] hover:text-white px-2 py-1 rounded cursor-pointer transition"
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="flex items-center px-5 py-4 space-x-4">
             <label className="cursor-pointer text-[#b5bac1] hover:text-[#dbdee1] transition p-1">
@@ -388,7 +438,6 @@ export default function MessageArea({
   );
 }
 
-// ✏️ 編集機能を内包した 1行分のメッセージコンポーネント
 interface MessageRowProps {
   item: MessageItem;
   onDeleteMessage: (id: number) => void;
@@ -429,7 +478,6 @@ function MessageRow({ item, onDeleteMessage, onEditMessage, onSelectTag, message
       ref={messageRef}
       className="relative flex flex-col space-y-1 hover:bg-[#2e3035] px-2 py-1 transition w-full overflow-hidden group rounded"
     >
-      {/* 送信者名とタイムスタンプ */}
       <div className="flex items-baseline space-x-2">
         <span className="font-semibold text-white text-sm cursor-pointer hover:underline">
           kei5ot
@@ -437,7 +485,6 @@ function MessageRow({ item, onDeleteMessage, onEditMessage, onSelectTag, message
         <span className="text-[10px] text-[#949ba4]">{item.time}</span>
       </div>
 
-      {/* 📝 テキスト表示 OR 編集フォームの切り替え */}
       {isEditing ? (
         <div className="flex flex-col space-y-2 my-1 z-10">
           <input
@@ -471,15 +518,12 @@ function MessageRow({ item, onDeleteMessage, onEditMessage, onSelectTag, message
         </div>
       ) : (
         <div className="text-sm text-[#dbdee1] break-words">
-          {/* テキスト描画 */}
           <FormattedText text={item.content} />
 
-          {/* 編集済みフラグ */}
           {item.isEdited && (
             <span className="text-[10px] text-[#949ba4] ml-1.5 font-normal">(編集済)</span>
           )}
 
-          {/* 画像表示 */}
           {item.type === "image" && item.url && (
             <div className="mt-2 max-w-[95%] md:max-w-sm rounded-md overflow-hidden border border-[#2b2d31] bg-[#2b2d31] cursor-pointer">
               <img
@@ -491,12 +535,10 @@ function MessageRow({ item, onDeleteMessage, onEditMessage, onSelectTag, message
             </div>
           )}
 
-          {/* OGPカード表示 */}
           {/(https?:\/\/[^\s]+)/.test(item.content) && (
             <LinkPreviewCard url={item.content.match(/(https?:\/\/[^\s]+)/)?.[0] || ""} />
           )}
 
-          {/* 🏷️ タグ一覧表示 */}
           {item.tags && item.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1.5">
               {item.tags.map((tag, idx) => (
@@ -513,10 +555,8 @@ function MessageRow({ item, onDeleteMessage, onEditMessage, onSelectTag, message
         </div>
       )}
 
-      {/* 🛠️ アクションボタン群（🌟 常時表示にするため flex クラスに修正） */}
       {!isEditing && (
         <div className="absolute top-1 right-2 flex items-center space-x-1 bg-[#313338] border border-[#232428] rounded shadow-md z-10 p-0.5">
-          {/* ✏️ 編集ボタン */}
           <button
             onClick={() => {
               setEditText(item.content);
@@ -531,7 +571,6 @@ function MessageRow({ item, onDeleteMessage, onEditMessage, onSelectTag, message
             <span>編集</span>
           </button>
 
-          {/* 🗑️ 削除ボタン */}
           <button
             onClick={() => onDeleteMessage(item.id)}
             className="px-2 py-1 text-xs text-[#dbdee1] hover:bg-[#404249] hover:text-red-400 rounded transition cursor-pointer flex items-center space-x-1"
