@@ -5,6 +5,7 @@ import { createConsumer } from "@rails/actioncable";
 import ChannnelBar from "../components/channnelbar";
 import MessageArea from "../components/messagearea";
 import PictureBar from "../components/picturebar";
+import WarnConfirm from "@/components/WarnConfrim";
 import HealthCheckButton from "@/components/HealthCheckButton";
 import { Channel, MessageItem } from "../logic/types";
 
@@ -29,6 +30,10 @@ export default function Home() {
   const [isImageSidebarOpen, setIsImageSidebarOpen] = useState(false);
   const [inputText, setInputText] = useState("");
   const [items, setItems] = useState<MessageItem[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: "message" | "channel";
+    id: number;
+  } | null>(null);
   
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [attachedTags, setAttachedTags] = useState<string[]>([]);
@@ -191,7 +196,8 @@ export default function Home() {
         setAttachedImagePreview(null);
         setAttachedTags([]);
       } else {
-        console.error("送信エラー");
+        const errorData = await res.json();
+        console.error("送信エラーの詳細:", errorData);
       }
     } catch (err) {
       console.error("Post error:", err);
@@ -208,10 +214,40 @@ export default function Home() {
   };
 
   // メッセージ削除処理（API経由にする場合は DELETE リクエストを追加）
+  // 削除確認を開く
   const handleDeleteMessage = (id: number) => {
-    if (confirm("メッセージを削除しますか？")) {
-      setItems(items.filter((item) => item.id !== id));
+    setDeleteTarget({
+      type: "message",
+      id,
+    });
+  };
+  const handleDeleteChannel = (id: number) => {
+    setDeleteTarget({
+      type: "channel",
+      id,
+    });
+  };
+
+  // 削除を確定する
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return;
+
+    if (deleteTarget.type === "message") {
+      setItems((prev) =>
+        prev.filter((item) => item.id !== deleteTarget.id)
+      );
     }
+
+    if (deleteTarget.type === "channel") {
+      setChannels((prev) =>
+        prev.filter((channel) => channel.id !== deleteTarget.id)
+      );
+    }
+
+    setDeleteTarget(null);
+  };
+  const handleCancelDelete = () => {
+    setDeleteTarget(null);
   };
 
   // チャンネル作成処理
@@ -307,6 +343,22 @@ export default function Home() {
         onScrollToMessage={scrollToMessage}
       />
       {/*<HealthCheckButton />*/}
+      <WarnConfirm
+        isOpen={deleteTarget !== null}
+        title={
+          deleteTarget?.type === "channel"
+            ? "チャンネルを削除"
+            : "メッセージを削除"
+        }
+        message={
+          deleteTarget?.type === "channel"
+            ? "このチャンネルを削除しますか？\nこの操作は取り消せません。"
+            : "このメッセージを削除しますか？\nこの操作は取り消せません。"
+        }
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
     </div>
+    
   );
 }
