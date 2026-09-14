@@ -64,6 +64,8 @@ export default function Home() {
         return res.json();
       })
       .then((data) => {
+        console.log("🔥 messages API:", data);
+        console.log("🔥 first message:", data?.[0]);
         if (Array.isArray(data)) {
           setItems(data);
         } else if (data && Array.isArray(data.messages)) {
@@ -112,6 +114,18 @@ export default function Home() {
     if (formattedTag && !attachedTags.includes(formattedTag)) {
       setAttachedTags((prev) => [...prev, formattedTag]);
     }
+  };
+
+  const handleTest = () => {
+    fetch(`${API_BASE_URL}/api/v1/tags`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then((data)=>{
+        console.log("return data",data);
+        console.log("first data", data?.[0]);
+      })
   };
 
   const handleRemoveTag = (tagToRemove: string) => {
@@ -265,6 +279,7 @@ export default function Home() {
         const newChannel: Channel = await res.json();
         setChannels((prev) => [...prev, newChannel]);
         setActiveChannelId(newChannel.id);
+        console.log("eeee");
       }
     } catch (err) {
       console.error("Channel create error:", err);
@@ -294,6 +309,7 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-[#313338] text-[#dbdee1] font-sans antialiased overflow-hidden relative">
+    <button onClick={handleTest}>test</button>
       {/* 1. 左側：チャンネルバー */}
       <ChannnelBar
         channels={channels}
