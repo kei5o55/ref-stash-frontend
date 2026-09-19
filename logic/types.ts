@@ -1,4 +1,3 @@
-// 型定義をしておくと今後のRails連携（API）で型安全になります
 export interface Channel {
   id: number;
   name: string;

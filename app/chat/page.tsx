@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createConsumer } from "@rails/actioncable";
-import { Channel, MessageItem } from "../../logic/chat";
+import { Channel, MessageItem } from "../../logic/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
