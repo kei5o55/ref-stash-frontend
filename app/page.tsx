@@ -1,25 +1,33 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { createConsumer } from "@rails/actioncable";
+import { createConsumer, Consumer } from "@rails/actioncable";
 import ChannnelBar from "../components/channnelbar";
 import MessageArea from "../components/messagearea";
 import PictureBar from "../components/picturebar";
 import WarnConfirm from "@/components/WarnConfrim";
 import { Channel, MessageItem } from "../logic/types";
 
-// --- 変更後 ---
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 // 動的に WebSocket の URL を取得する関数
 const getWsUrl = () => {
   if (typeof window !== "undefined") {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.hostname; // スマホが開いている IP (例: 192.168.x.x) を取得
-    const port = "3000"; // Rails サーバーのポート番号
+    const host = window.location.hostname;
+    const port = "3000";
     return `${protocol}//${host}:${port}/cable`;
   }
   return API_BASE_URL.replace(/^http/, "ws") + "/cable";
+};
+
+// ⚡️ WebSocket コネクション（Consumer）をコンポーネント外で1つだけ保持する
+let consumer: Consumer | null = null;
+const getConsumer = () => {
+  if (!consumer && typeof window !== "undefined") {
+    consumer = createConsumer(getWsUrl());
+  }
+  return consumer;
 };
 
 export default function Home() {
@@ -52,7 +60,7 @@ export default function Home() {
       .catch((err) => console.error("Channels fetch error:", err));
   }, []);
 
- // 2. 選択中チャンネルのメッセージ取得 & Action Cable リアルタイム受信
+  // 2. 選択中チャンネルのメッセージ取得 & Action Cable リアルタイム受信
   useEffect(() => {
     if (!activeChannelId) return;
 
@@ -63,8 +71,6 @@ export default function Home() {
         return res.json();
       })
       .then((data) => {
-        console.log("🔥 messages API:", data);
-        console.log("🔥 first message:", data?.[0]);
         if (Array.isArray(data)) {
           setItems(data);
         } else if (data && Array.isArray(data.messages)) {
@@ -79,31 +85,29 @@ export default function Home() {
         setItems([]);
       });
 
-    // ⚡️ 動的 URL を使って Action Cable WebSocket 接続の設定
-    const wsUrl = getWsUrl();
-    const consumer = createConsumer(wsUrl);
+    // ⚡️ シングルトンの Consumer を取得して Subscription（購読）のみ登録
+    const currentConsumer = getConsumer();
+    if (!currentConsumer) return;
 
-    const subscription = consumer.subscriptions.create(
+    const subscription = currentConsumer.subscriptions.create(
       { channel: "MessagesChannel", channel_id: activeChannelId },
       {
         received(newMessage: MessageItem) {
           setItems((prev) => {
-            const current = Array.isArray(prev) ? [...prev] : [];
+            const current = Array.isArray(prev) ? prev : [];
             // すでに存在していれば更新しない
             if (current.some((item) => item.id === newMessage.id)) {
               return current;
             }
-            // 新しい参照を作成して追加（これで確実に再レンダリングをトリガー）
             return [...current, newMessage];
           });
         },
       }
     );
 
-    // クリーンアップ処理
+    // クリーンアップ処理（Subscriptionの解除のみ行う）
     return () => {
       subscription.unsubscribe();
-      consumer.disconnect();
     }; 
 
   }, [activeChannelId]);
@@ -114,18 +118,6 @@ export default function Home() {
     if (formattedTag && !attachedTags.includes(formattedTag)) {
       setAttachedTags((prev) => [...prev, formattedTag]);
     }
-  };
-
-  const handleTest = () => {
-    fetch(`${API_BASE_URL}/api/v1/tags`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return res.json();
-      })
-      .then((data)=>{
-        console.log("return data",data);
-        console.log("first data", data?.[0]);
-      })
   };
 
   const handleRemoveTag = (tagToRemove: string) => {
@@ -183,12 +175,10 @@ export default function Home() {
     formData.append("content", inputText.trim());
     formData.append("type", attachedImageFile ? "image" : "text");
 
-    // 画像ファイルを添付 (Active Storage用)
     if (attachedImageFile) {
       formData.append("image", attachedImageFile);
     }
 
-    // タグ配列の追加
     attachedTags.forEach((tag) => {
       formData.append("tags[]", tag);
     });
@@ -198,13 +188,11 @@ export default function Home() {
         `${API_BASE_URL}/api/v1/channels/${activeChannelId}/messages`,
         {
           method: "POST",
-          // ※ Content-Type ヘッダーは自動設定させるため付与しない
           body: formData,
         }
       );
 
       if (res.ok) {
-        // フォームのリセット
         setInputText("");
         setAttachedImageFile(null);
         setAttachedImagePreview(null);
@@ -218,7 +206,6 @@ export default function Home() {
     }
   };
 
-  // メッセージ編集処理（API経由にする場合は PATCH リクエストを追加）
   const handleEditMessage = (id: number, newContent: string) => {
     setItems((prev) =>
       prev.map((item) =>
@@ -227,14 +214,13 @@ export default function Home() {
     );
   };
 
-  // メッセージ削除処理（API経由にする場合は DELETE リクエストを追加）
-  // 削除確認を開く
   const handleDeleteMessage = (id: number) => {
     setDeleteTarget({
       type: "message",
       id,
     });
   };
+
   const handleDeleteChannel = (id: number) => {
     setDeleteTarget({
       type: "channel",
@@ -242,7 +228,6 @@ export default function Home() {
     });
   };
 
-  // 削除を確定する
   const handleConfirmDelete = () => {
     if (!deleteTarget) return;
 
@@ -260,11 +245,11 @@ export default function Home() {
 
     setDeleteTarget(null);
   };
+
   const handleCancelDelete = () => {
     setDeleteTarget(null);
   };
 
-  // チャンネル作成処理
   const handleCreateChannel = async () => {
     const name = prompt("新しいチャンネル名を入力してください");
     if (!name?.trim()) return;
@@ -279,14 +264,12 @@ export default function Home() {
         const newChannel: Channel = await res.json();
         setChannels((prev) => [...prev, newChannel]);
         setActiveChannelId(newChannel.id);
-        console.log("eeee");
       }
     } catch (err) {
       console.error("Channel create error:", err);
     }
   };
 
-  // 絞り込みロジック
   const currentChannel = channels.find((c) => c.id === activeChannelId);
   const safeItems = Array.isArray(items) ? items : [];
   const filteredItems = safeItems.filter((item) => item.channelId === activeChannelId);
@@ -309,7 +292,6 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-[#313338] text-[#dbdee1] font-sans antialiased overflow-hidden relative">
-      {/* 1. 左側：チャンネルバー */}
       <ChannnelBar
         channels={channels}
         activeChannelId={activeChannelId}
@@ -319,7 +301,6 @@ export default function Home() {
         onCreateChannel={handleCreateChannel}
       />
 
-      {/* 2. 中央：メインメッセージ画面 */}
       <MessageArea
         currentChannel={currentChannel}
         filteredItems={displayedItems}
@@ -350,14 +331,13 @@ export default function Home() {
         onEditMessage={handleEditMessage}
       />
 
-      {/* 3. 右側：画像一覧バー */}
       <PictureBar
         filteredItems={filteredItems}
         isImageSidebarOpen={isImageSidebarOpen}
         setIsImageSidebarOpen={setIsImageSidebarOpen}
         onScrollToMessage={scrollToMessage}
       />
-      {/*<HealthCheckButton />*/}
+
       <WarnConfirm
         isOpen={deleteTarget !== null}
         title={
@@ -374,6 +354,5 @@ export default function Home() {
         onCancel={handleCancelDelete}
       />
     </div>
-    
   );
 }

@@ -1,10 +1,5 @@
-import { MutableRefObject } from "react";
+import { MutableRefObject, useState, useEffect, useLayoutEffect, useRef, useMemo, memo } from "react";
 import { Channel, MessageItem } from "../logic/types";
-import { createConsumer } from "@rails/actioncable";
-import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
-const WS_BASE_URL = API_BASE_URL.replace(/^http/, "ws") + "/cable";
 
 interface MessageAreaProps {
   currentChannel?: Channel;
@@ -34,14 +29,18 @@ interface MessageAreaProps {
 }
 
 // 1. URLを検出して青いハイパーリンクにするコンポーネント
-const FormattedText = ({ text }: { text: string }) => {
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const parts = text.split(urlRegex);
+const FormattedText = memo(({ text }: { text: string }) => {
+  const parts = useMemo(() => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.split(urlRegex);
+  }, [text]);
+
+  const urlRegex = /(https?:\/\/[^\s]+)/;
 
   return (
     <span>
       {parts.map((part, index) => {
-        if (part.match(urlRegex)) {
+        if (urlRegex.test(part)) {
           return (
             <a
               key={index}
@@ -59,20 +58,30 @@ const FormattedText = ({ text }: { text: string }) => {
       })}
     </span>
   );
-};
+});
+FormattedText.displayName = "FormattedText";
 
 // 2. プレビューカード（OGP/Twitter風）を表示するコンポーネント
-const LinkPreviewCard = ({ url }: { url: string }) => {
-  const isTwitter = url.includes("twitter.com") || url.includes("x.com");
+const LinkPreviewCard = memo(({ url }: { url: string }) => {
+  const isTwitter = useMemo(() => url.includes("twitter.com") || url.includes("x.com"), [url]);
 
-  const mockOgp = {
-    title: isTwitter ? "X (旧Twitter) ユーザーの投稿" : "Webサイトタイトル",
-    siteName: isTwitter ? "X (formerly Twitter)" : new URL(url).hostname,
-    description: isTwitter
-      ? "これはポストの本文プレビューテキストです。リアクションやメディアが含まれる場合があります。"
-      : "リンク先のWebページの概要テキストがここに入ります。",
-    image: "https://picsum.photos/600/300?random=" + url.length,
-  };
+  const mockOgp = useMemo(() => {
+    let hostname = "";
+    try {
+      hostname = new URL(url).hostname;
+    } catch {
+      hostname = url;
+    }
+
+    return {
+      title: isTwitter ? "X (旧Twitter) ユーザーの投稿" : "Webサイトタイトル",
+      siteName: isTwitter ? "X (formerly Twitter)" : hostname,
+      description: isTwitter
+        ? "これはポストの本文プレビューテキストです。リアクションやメディアが含まれる場合があります。"
+        : "リンク先のWebページの概要テキストがここに入ります。",
+      image: "https://picsum.photos/600/300?random=" + url.length,
+    };
+  }, [url, isTwitter]);
 
   return (
     <a
@@ -101,7 +110,8 @@ const LinkPreviewCard = ({ url }: { url: string }) => {
       </div>
     </a>
   );
-};
+});
+LinkPreviewCard.displayName = "LinkPreviewCard";
 
 export default function MessageArea({
   currentChannel,
@@ -173,6 +183,7 @@ export default function MessageArea({
 
   // 🔍 入力中の文字と選択済みのタグに基づいて候補をフィルタリング
   const suggestedTags = useMemo(() => {
+    if (!tagInput.trim()) return [];
     return existingTags.filter(
       (tag) =>
         !attachedTags.includes(tag) &&
@@ -217,225 +228,225 @@ export default function MessageArea({
 
   return (
     <div
-  className="flex flex-col flex-1 bg-[#313338] min-w-0 relative"
-  onDragOver={handleDragOver}
-  onDragLeave={handleDragLeave}
-  onDrop={handleOnDrop}
->
-  {/* ドラッグオーバーレイ */}
-  {isDragging && (
-    <div className="absolute inset-0 bg-[#5865f2]/20 border-2 border-dashed border-[#5865f2] z-50 flex flex-col items-center justify-center backdrop-blur-[2px] pointer-events-none transition-all">
-      <div className="bg-[#313338] p-6 rounded-2xl shadow-2xl flex flex-col items-center space-y-3 border border-[#383a40]">
-        <div className="p-4 bg-[#5865f2] rounded-full text-white">
-          <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-          </svg>
-        </div>
-        <p className="text-lg font-bold text-[#f2f3f5]">画像をドロップして添付</p>
-        <p className="text-xs text-[#949ba4]"># {currentChannel?.name} に画像を添付します</p>
-      </div>
-    </div>
-  )}
-
-  {/* ヘッダー (h-12 -> h-10 に縮小) */}
-  <div className="h-10 border-b border-[#1f2023] flex items-center px-2 md:px-4 font-bold text-white shadow-sm shrink-0 text-sm">
-    <button className="md:hidden p-1 text-[#949ba4] hover:text-white mr-1" onClick={() => setIsMenuOpen(true)}>
-      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M4 6h16a1 1 0 010 2H4a1 1 0 010-2zM4 12h16a1 1 0 010 2H4a1 1 0 010-2zM4 18h16a1 1 0 010 2H4a1 1 0 010-2z" />
-      </svg>
-    </button>
-    <span className="text-[#80848e] mr-1.5">#</span> {currentChannel?.name}
-
-    <div className="relative flex-1 max-w-[150px] md:max-w-[200px] ml-auto">
-      <input
-        type="text"
-        placeholder="検索"
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        className="w-full bg-[#1e1f22] text-[#dbdee1] placeholder-[#949ba4] text-xs rounded px-2 py-1 pr-6 focus:outline-none focus:ring-1 focus:ring-[#5865f2] transition"
-      />
-      {searchQuery ? (
-        <button
-          onClick={() => setSearchQuery("")}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-[#949ba4] hover:text-white text-xs cursor-pointer"
-        >
-          ✕
-        </button>
-      ) : (
-        <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[#949ba4]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-      )}
-    </div>
-
-    <button
-      onClick={() => setIsImageSidebarOpen(!isImageSidebarOpen)}
-      className={`ml-2 p-1.5 rounded transition cursor-pointer ${
-        isImageSidebarOpen ? "text-white bg-[#404249]" : "text-[#b5bac1] hover:text-[#dbdee1]"
-      }`}
-      title="画像一覧を表示"
+      className="flex flex-col flex-1 bg-[#313338] min-w-0 relative"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleOnDrop}
     >
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-      </svg>
-    </button>
-  </div>
-
-  {/* メッセージ表示エリア (p-4 -> p-2 md:p-3, space-y-4 -> space-y-1.5 に詰める) */}
-  <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 md:p-3 space-y-1.5 text-sm">
-    {hasMore && (
-      <div className="flex justify-center my-1">
-        <button
-          onClick={handleLoadMoreClick}
-          className="px-3 py-1 text-[11px] font-medium text-[#dbdee1] bg-[#2b2d31] hover:bg-[#35373c] border border-[#1e1f22] rounded-full transition cursor-pointer shadow-sm"
-        >
-          過去のメッセージを読み込む
-        </button>
-      </div>
-    )}
-
-    {filteredItems.map((item) => (
-      <MessageRow
-        key={item.id}
-        item={item}
-        onDeleteMessage={onDeleteMessage}
-        onEditMessage={onEditMessage}
-        onSelectTag={(tag) => setSearchQuery(`#${tag}`)}
-        messageRef={(el) => { messageRefs.current[item.id] = el; }}
-      />
-    ))}
-
-    {filteredItems.length === 0 && (
-      <div className="text-xs text-[#80848e] italic text-center pt-8">
-        メッセージはまだありません。最初のメッセージを送信してみましょう！
-      </div>
-    )}
-  </div>
-
-  {/* 入力フォームエリア (p-6 -> p-2 md:p-3 にパディング削減) */}
-  <div className="p-2 md:p-3 bg-[#313338] shrink-0">
-    <div className="flex flex-col bg-[#383a40] rounded-lg overflow-hidden relative">
-      {attachedImage && (
-        <div className="p-2 bg-[#2b2d31] border-b border-[#1f2023] flex items-center space-x-2 relative group">
-          <div className="relative w-12 h-12 rounded-md overflow-hidden border border-[#383a40] bg-[#1e1f22] shrink-0">
-            <img
-              src={attachedImage.url}
-              alt={attachedImage.name}
-              className="w-full h-full object-cover"
-            />
+      {/* ドラッグオーバーレイ */}
+      {isDragging && (
+        <div className="absolute inset-0 bg-[#5865f2]/20 border-2 border-dashed border-[#5865f2] z-50 flex flex-col items-center justify-center backdrop-blur-[2px] pointer-events-none transition-all">
+          <div className="bg-[#313338] p-6 rounded-2xl shadow-2xl flex flex-col items-center space-y-3 border border-[#383a40]">
+            <div className="p-4 bg-[#5865f2] rounded-full text-white">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+            </div>
+            <p className="text-lg font-bold text-[#f2f3f5]">画像をドロップして添付</p>
+            <p className="text-xs text-[#949ba4]"># {currentChannel?.name} に画像を添付します</p>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-[#dbdee1] truncate">{attachedImage.name}</p>
-            <p className="text-[10px] text-[#949ba4]">送信準備完了</p>
-          </div>
-          <button
-            onClick={onRemoveAttachedImage}
-            className="p-1 rounded-full bg-[#313338] hover:bg-red-500 text-[#b5bac1] hover:text-white transition cursor-pointer"
-            title="添付を取り消す"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
       )}
 
-      {/* タグ表示 & タグ入力枠 (余白縮小) */}
-      <div className="px-3 pt-2 flex flex-wrap items-center gap-1.5 relative">
-        {attachedTags.map((tag) => (
-          <span
-            key={tag}
-            className="inline-flex items-center space-x-1 text-[11px] font-semibold text-white bg-[#5865f2] px-1.5 py-0.5 rounded"
-          >
-            <span>#{tag}</span>
+      {/* ヘッダー */}
+      <div className="h-10 border-b border-[#1f2023] flex items-center px-2 md:px-4 font-bold text-white shadow-sm shrink-0 text-sm">
+        <button className="md:hidden p-1 text-[#949ba4] hover:text-white mr-1" onClick={() => setIsMenuOpen(true)}>
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M4 6h16a1 1 0 010 2H4a1 1 0 010-2zM4 12h16a1 1 0 010 2H4a1 1 0 010-2zM4 18h16a1 1 0 010 2H4a1 1 0 010-2z" />
+          </svg>
+        </button>
+        <span className="text-[#80848e] mr-1.5">#</span> {currentChannel?.name}
+
+        <div className="relative flex-1 max-w-[150px] md:max-w-[200px] ml-auto">
+          <input
+            type="text"
+            placeholder="検索"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-[#1e1f22] text-[#dbdee1] placeholder-[#949ba4] text-xs rounded px-2 py-1 pr-6 focus:outline-none focus:ring-1 focus:ring-[#5865f2] transition"
+          />
+          {searchQuery ? (
             <button
-              onClick={() => onRemoveTag(tag)}
-              className="hover:text-red-300 ml-0.5 cursor-pointer text-[10px]"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[#949ba4] hover:text-white text-xs cursor-pointer"
             >
               ✕
             </button>
-          </span>
-        ))}
-
-        <div className="relative flex items-center text-xs text-[#949ba4]">
-          <span className="mr-0.5">#</span>
-          <input
-            type="text"
-            placeholder="タグを追加"
-            value={tagInput}
-            onChange={(e) => {
-              setTagInput(e.target.value);
-              setIsTagSuggestOpen(true);
-            }}
-            onFocus={() => setIsTagSuggestOpen(true)}
-            onBlur={() => setTimeout(() => setIsTagSuggestOpen(false), 200)}
-            onKeyDown={handleTagKeyDown}
-            className="bg-transparent text-xs text-[#dbdee1] placeholder-[#80848e] focus:outline-none w-28"
-          />
+          ) : (
+            <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[#949ba4]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          )}
         </div>
-      </div>
-
-      {/* 既存タグ候補のポップアップ */}
-      {isTagSuggestOpen && suggestedTags.length > 0 && (
-        <div className="mx-3 my-1 p-1.5 bg-[#2b2d31] border border-[#1e1f22] rounded-lg shadow-lg flex flex-wrap gap-1 max-h-24 overflow-y-auto z-20">
-          <span className="w-full text-[10px] text-[#949ba4] font-semibold px-1">
-            既存のタグから選択:
-          </span>
-          {suggestedTags.map((tag) => (
-            <button
-              key={tag}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleSelectSuggestedTag(tag);
-              }}
-              className="inline-flex items-center text-[11px] text-[#dbdee1] bg-[#383a40] hover:bg-[#5865f2] hover:text-white px-1.5 py-0.5 rounded cursor-pointer transition"
-            >
-              #{tag}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* メッセージ入力行 (px-5 py-4 -> px-3 py-2, テキストサイズ text-base -> text-sm) */}
-      <div className="flex items-center px-3 py-2 space-x-2">
-        <label className="cursor-pointer text-[#b5bac1] hover:text-[#dbdee1] transition p-0.5">
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M19 11h-6V5a1 1 0 00-2 0v6H5a1 1 0 000 2h6v6a1 1 0 002 0v-6h6a1 1 0 000-2z" />
-          </svg>
-          <input
-            type="file"
-            className="hidden"
-            accept="image/*"
-            onChange={onFileChange}
-          />
-        </label>
-
-        <input
-          type="text"
-          placeholder={`# ${currentChannel?.name} へのメッセージ`}
-          className="bg-transparent flex-1 focus:outline-none text-sm text-[#dbdee1] placeholder-[#80848e] font-normal min-w-0"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && onSend()}
-          onPaste={onPaste}
-        />
 
         <button
-          onClick={onSend}
-          disabled={!inputText.trim() && !attachedImage}
-          className={`px-3 py-1 rounded-md font-medium text-xs transition cursor-pointer shrink-0 ${
-            inputText.trim() || attachedImage
-              ? "bg-[#5865f2] text-white hover:bg-[#4752c4]"
-              : "bg-[#4e5058] text-[#949ba4] cursor-not-allowed"
+          onClick={() => setIsImageSidebarOpen(!isImageSidebarOpen)}
+          className={`ml-2 p-1.5 rounded transition cursor-pointer ${
+            isImageSidebarOpen ? "text-white bg-[#404249]" : "text-[#b5bac1] hover:text-[#dbdee1]"
           }`}
+          title="画像一覧を表示"
         >
-          送信
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+          </svg>
         </button>
       </div>
+
+      {/* メッセージ表示エリア */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 md:p-3 space-y-1.5 text-sm">
+        {hasMore && (
+          <div className="flex justify-center my-1">
+            <button
+              onClick={handleLoadMoreClick}
+              className="px-3 py-1 text-[11px] font-medium text-[#dbdee1] bg-[#2b2d31] hover:bg-[#35373c] border border-[#1e1f22] rounded-full transition cursor-pointer shadow-sm"
+            >
+              過去のメッセージを読み込む
+            </button>
+          </div>
+        )}
+
+        {filteredItems.map((item) => (
+          <MessageRow
+            key={item.id}
+            item={item}
+            onDeleteMessage={onDeleteMessage}
+            onEditMessage={onEditMessage}
+            onSelectTag={(tag) => setSearchQuery(`#${tag}`)}
+            messageRef={(el) => { messageRefs.current[item.id] = el; }}
+          />
+        ))}
+
+        {filteredItems.length === 0 && (
+          <div className="text-xs text-[#80848e] italic text-center pt-8">
+            メッセージはまだありません。最初のメッセージを送信してみましょう！
+          </div>
+        )}
+      </div>
+
+      {/* 入力フォームエリア */}
+      <div className="p-2 md:p-3 bg-[#313338] shrink-0">
+        <div className="flex flex-col bg-[#383a40] rounded-lg overflow-hidden relative">
+          {attachedImage && (
+            <div className="p-2 bg-[#2b2d31] border-b border-[#1f2023] flex items-center space-x-2 relative group">
+              <div className="relative w-12 h-12 rounded-md overflow-hidden border border-[#383a40] bg-[#1e1f22] shrink-0">
+                <img
+                  src={attachedImage.url}
+                  alt={attachedImage.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-[#dbdee1] truncate">{attachedImage.name}</p>
+                <p className="text-[10px] text-[#949ba4]">送信準備完了</p>
+              </div>
+              <button
+                onClick={onRemoveAttachedImage}
+                className="p-1 rounded-full bg-[#313338] hover:bg-red-500 text-[#b5bac1] hover:text-white transition cursor-pointer"
+                title="添付を取り消す"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* タグ表示 & タグ入力枠 */}
+          <div className="px-3 pt-2 flex flex-wrap items-center gap-1.5 relative">
+            {attachedTags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center space-x-1 text-[11px] font-semibold text-white bg-[#5865f2] px-1.5 py-0.5 rounded"
+              >
+                <span>#{tag}</span>
+                <button
+                  onClick={() => onRemoveTag(tag)}
+                  className="hover:text-red-300 ml-0.5 cursor-pointer text-[10px]"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+
+            <div className="relative flex items-center text-xs text-[#949ba4]">
+              <span className="mr-0.5">#</span>
+              <input
+                type="text"
+                placeholder="タグを追加"
+                value={tagInput}
+                onChange={(e) => {
+                  setTagInput(e.target.value);
+                  setIsTagSuggestOpen(true);
+                }}
+                onFocus={() => setIsTagSuggestOpen(true)}
+                onBlur={() => setTimeout(() => setIsTagSuggestOpen(false), 200)}
+                onKeyDown={handleTagKeyDown}
+                className="bg-transparent text-xs text-[#dbdee1] placeholder-[#80848e] focus:outline-none w-28"
+              />
+            </div>
+          </div>
+
+          {/* 既存タグ候補のポップアップ */}
+          {isTagSuggestOpen && suggestedTags.length > 0 && (
+            <div className="mx-3 my-1 p-1.5 bg-[#2b2d31] border border-[#1e1f22] rounded-lg shadow-lg flex flex-wrap gap-1 max-h-24 overflow-y-auto z-20">
+              <span className="w-full text-[10px] text-[#949ba4] font-semibold px-1">
+                既存のタグから選択:
+              </span>
+              {suggestedTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleSelectSuggestedTag(tag);
+                  }}
+                  className="inline-flex items-center text-[11px] text-[#dbdee1] bg-[#383a40] hover:bg-[#5865f2] hover:text-white px-1.5 py-0.5 rounded cursor-pointer transition"
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* メッセージ入力行 */}
+          <div className="flex items-center px-3 py-2 space-x-2">
+            <label className="cursor-pointer text-[#b5bac1] hover:text-[#dbdee1] transition p-0.5">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M19 11h-6V5a1 1 0 00-2 0v6H5a1 1 0 000 2h6v6a1 1 0 002 0v-6h6a1 1 0 000-2z" />
+              </svg>
+              <input
+                type="file"
+                className="hidden"
+                accept="image/*"
+                onChange={onFileChange}
+              />
+            </label>
+
+            <input
+              type="text"
+              placeholder={`# ${currentChannel?.name || ""} へのメッセージ`}
+              className="bg-transparent flex-1 focus:outline-none text-sm text-[#dbdee1] placeholder-[#80848e] font-normal min-w-0"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && onSend()}
+              onPaste={onPaste}
+            />
+
+            <button
+              onClick={onSend}
+              disabled={!inputText.trim() && !attachedImage}
+              className={`px-3 py-1 rounded-md font-medium text-xs transition cursor-pointer shrink-0 ${
+                inputText.trim() || attachedImage
+                  ? "bg-[#5865f2] text-white hover:bg-[#4752c4]"
+                  : "bg-[#4e5058] text-[#949ba4] cursor-not-allowed"
+              }`}
+            >
+              送信
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
-</div>
   );
 }
 
@@ -447,9 +458,14 @@ interface MessageRowProps {
   messageRef: (el: HTMLDivElement | null) => void;
 }
 
-function MessageRow({ item, onDeleteMessage, onEditMessage, onSelectTag, messageRef }: MessageRowProps) {
+const MessageRow = memo(({ item, onDeleteMessage, onEditMessage, onSelectTag, messageRef }: MessageRowProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(item.content);
+
+  const matchedUrl = useMemo(() => {
+    const urlMatch = item.content.match(/(https?:\/\/[^\s]+)/);
+    return urlMatch ? urlMatch[0] : null;
+  }, [item.content]);
 
   const handleSave = () => {
     if (!editText.trim()) return;
@@ -536,9 +552,7 @@ function MessageRow({ item, onDeleteMessage, onEditMessage, onSelectTag, message
             </div>
           )}
 
-          {/(https?:\/\/[^\s]+)/.test(item.content) && (
-            <LinkPreviewCard url={item.content.match(/(https?:\/\/[^\s]+)/)?.[0] || ""} />
-          )}
+          {matchedUrl && <LinkPreviewCard url={matchedUrl} />}
 
           {item.tags && item.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1.5">
@@ -557,7 +571,7 @@ function MessageRow({ item, onDeleteMessage, onEditMessage, onSelectTag, message
       )}
 
       {!isEditing && (
-        <div className="absolute top-1 right-2 flex items-center space-x-1 bg-[#313338] border border-[#232428] rounded shadow-md z-10 p-0.5">
+        <div className="absolute top-1 right-2 flex items-center space-x-1 bg-[#313338] border border-[#232428] rounded shadow-md z-10 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={() => {
               setEditText(item.content);
@@ -586,4 +600,5 @@ function MessageRow({ item, onDeleteMessage, onEditMessage, onSelectTag, message
       )}
     </div>
   );
-}
+});
+MessageRow.displayName = "MessageRow";

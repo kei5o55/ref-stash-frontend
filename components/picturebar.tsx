@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import { MessageItem } from "../logic/types";
 
 interface PictureBarProps {
@@ -7,18 +8,48 @@ interface PictureBarProps {
   onScrollToMessage: (id: number) => void;
 }
 
-export default function PictureBar({
+// 1. 各画像サムネイルの再描画を抑えるメモ化コンポーネント
+interface PictureCardProps {
+  item: MessageItem;
+  onScrollToMessage: (id: number) => void;
+}
+
+const PictureCard = memo(({ item, onScrollToMessage }: PictureCardProps) => {
+  return (
+    <div
+      className="relative aspect-square rounded overflow-hidden border border-[#1f2023] bg-[#313338] group/thumb cursor-pointer hover:border-[#5865f2] active:border-[#5865f2] transition touch-manipulation"
+      onClick={() => onScrollToMessage(item.id)}
+      title={item.content}
+    >
+      <img
+        src={item.url}
+        alt={item.content}
+        className="w-full h-full object-cover"
+        loading="lazy"
+      />
+      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition flex items-end p-1">
+        <span className="text-[10px] text-[#dbdee1] truncate w-full">{item.content}</span>
+      </div>
+    </div>
+  );
+});
+PictureCard.displayName = "PictureCard";
+
+// 2. サイドバー本体
+function PictureBar({
   filteredItems,
   isImageSidebarOpen,
   setIsImageSidebarOpen,
   onScrollToMessage,
 }: PictureBarProps) {
-  const images = filteredItems.filter((item) => item.type === "image");
+  // filteredItems が変更されたときのみ画像メッセージのみを抽出
+  const images = useMemo(() => {
+    return filteredItems.filter((item) => item.type === "image" && item.url);
+  }, [filteredItems]);
 
   return (
     <>
       {/* 🌟 スマホ用バックドロップ（暗い背景） */}
-      {/* スマホでサイドバーが開いている時のみ表示。タップで閉じる */}
       {isImageSidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity"
@@ -45,7 +76,8 @@ export default function PictureBar({
         {/* 右バーのヘッダー */}
         <div className="h-12 border-b border-[#1f2023] flex items-center justify-between px-4 font-bold text-white shrink-0">
           <div className="flex items-center space-x-2 text-sm">
-            <span>🖼️ 保存画像一覧</span>
+            <span>保存画像一覧</span>
+            <span className="text-xs font-normal text-[#949ba4]">({images.length})</span>
           </div>
           <button
             type="button"
@@ -61,22 +93,13 @@ export default function PictureBar({
         {/* 画像グリッドエリア */}
         <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-2 content-start">
           {images.map((item) => (
-            <div
+            <PictureCard
               key={item.id}
-              className="relative aspect-square rounded overflow-hidden border border-[#1f2023] bg-[#313338] group/thumb cursor-pointer hover:border-[#5865f2] active:border-[#5865f2] transition touch-manipulation"
-              onClick={() => {
-                onScrollToMessage(item.id);
-                // スマホ時はタップ後に自動でサイドバーを閉じるとUXが良い（必要に応じてコメント解除）
-                // if (window.innerWidth < 768) setIsImageSidebarOpen(false);
-              }}
-              title={item.content}
-            >
-              <img src={item.url} alt={item.content} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition flex items-end p-1">
-                <span className="text-[10px] text-[#dbdee1] truncate w-full">{item.content}</span>
-              </div>
-            </div>
+              item={item}
+              onScrollToMessage={onScrollToMessage}
+            />
           ))}
+
           {images.length === 0 && (
             <div className="col-span-2 text-center text-xs text-[#80848e] italic pt-8">
               画像はありません
@@ -87,3 +110,5 @@ export default function PictureBar({
     </>
   );
 }
+
+export default memo(PictureBar);
