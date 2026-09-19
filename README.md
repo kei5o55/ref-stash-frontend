@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ref-stash (創作リソース管理・共有システム)
 
-## Getting Started
+自身の創作素材やアイデアを蓄積、閲覧しやすい形での表示などの機能を実装予定のアプリです。
 
-First, run the development server:
+## コンセプト
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+普段はDiscordを用いてスマホからアイデアメモや写真素材をpcと共有していた。Discordを開くたびに余計な情報（ほかサーバの内容など）が視界に入ってきて気がそれたり、操作に選択の余地が発生してしまって抵抗があった。
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+DiscordのようなチャットアプリのUIを基盤にし、自分がより使いやすいような機能・UIに改造した「自分用創作素材管理アプリ」を作ればいいのではないか？って思ったよん。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+また、Railsを用いてバックエンドを開発しており、機器をまたいだデータ永続化の実践としても良い題材になるのではないかと考えた。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 使用技術
+### Frontend
+- React / Next.js
+- TypeScript
+- Tailwind CSS
 
-## Learn More
+### Backend
+- Ruby on Rails (API)
+- PostgreSQL
 
-To learn more about Next.js, take a look at the following resources:
+### Other
+- Docker (開発環境)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 開発の背景・目的 (Background)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **創作活動におけるノイズの排除**
+   - 既存のコミュニケーションツール依存から脱却し、思考の分散を防ぐ自分専用の作業環境を構築する。
+2. **機器をまたいだデータ永続化の実践**
+   - Rails API を バックエンドに採用し、スマホとPCなど複数デバイス間でのシームレスなデータ同期を検証・実践する。
