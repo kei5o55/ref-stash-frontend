@@ -6,7 +6,6 @@ import ChannnelBar from "../components/channnelbar";
 import MessageArea from "../components/messagearea";
 import PictureBar from "../components/picturebar";
 import WarnConfirm from "@/components/WarnConfrim";
-import HealthCheckButton from "@/components/HealthCheckButton";
 import { Channel, MessageItem } from "../logic/types";
 
 // --- 変更後 ---
@@ -105,7 +104,8 @@ export default function Home() {
     return () => {
       subscription.unsubscribe();
       consumer.disconnect();
-    };
+    }; 
+
   }, [activeChannelId]);
 
   // タグ追加・削除
@@ -309,7 +309,6 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-[#313338] text-[#dbdee1] font-sans antialiased overflow-hidden relative">
-    <button onClick={handleTest}>test</button>
       {/* 1. 左側：チャンネルバー */}
       <ChannnelBar
         channels={channels}
