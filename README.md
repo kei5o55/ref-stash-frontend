@@ -1,7 +1,8 @@
+[![Frontend CI](https://github.com/kei5o55/ref-stash-frontend/actions/workflows/ci.yml/badge.svg)](https://github.com/kei5o55/ref-stash-frontend/actions/workflows/frontend-ci.yml)
 # ref-stash (創作リソース管理・共有システム)
 
 自身の創作素材やアイデアを蓄積、閲覧しやすい形での表示などの機能を実装予定のアプリです。
->  **Note**: 本プロジェクトは現在開発段階です。まずは基本的なチャット機能の構築を進めており、今後アセット管理に特化した機能を順次実装予定です。
+> **本プロジェクトは現在開発段階です。まずは基本的なチャット機能の構築を進めており、今後アセット管理に特化した機能を順次実装予定**
 
 ## コンセプト
 
