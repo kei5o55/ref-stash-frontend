@@ -221,12 +221,12 @@ export default function Home() {
     });
   };
 
-  const handleDeleteChannel = (id: number) => {
+  /*const handleDeleteChannel = (id: number) => {
     setDeleteTarget({
       type: "channel",
       id,
     });
-  };
+  };*/
 
   const handleConfirmDelete = () => {
     if (!deleteTarget) return;

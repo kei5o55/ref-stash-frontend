@@ -1,5 +1,6 @@
 import { memo, useMemo } from "react";
 import { MessageItem } from "../logic/types";
+import Image from "next/image"
 
 interface PictureBarProps {
   filteredItems: MessageItem[];
@@ -21,8 +22,8 @@ const PictureCard = memo(({ item, onScrollToMessage }: PictureCardProps) => {
       onClick={() => onScrollToMessage(item.id)}
       title={item.content}
     >
-      <img
-        src={item.url}
+      <Image
+        src={item.url??""}
         alt={item.content}
         className="w-full h-full object-cover"
         loading="lazy"

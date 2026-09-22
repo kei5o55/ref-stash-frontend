@@ -1,5 +1,6 @@
 import { MutableRefObject, useState, useEffect, useLayoutEffect, useRef, useMemo, memo } from "react";
 import { Channel, MessageItem } from "../logic/types";
+import Image from "next/image"
 
 interface MessageAreaProps {
   currentChannel?: Channel;
@@ -152,15 +153,15 @@ export default function MessageArea({
   };
 
   useLayoutEffect(() => {
-    if (!scrollRef.current) return;
+    if (!scrollRef.current || !isLoadingMore) return;
 
-    if (isLoadingMore) {
-      const newScrollHeight = scrollRef.current.scrollHeight;
-      const heightDifference = newScrollHeight - previousScrollHeightRef.current;
-      scrollRef.current.scrollTop = heightDifference;
-      setIsLoadingMore(false);
-    }
-  }, [filteredItems, isLoadingMore]);
+    const newScrollHeight = scrollRef.current.scrollHeight;
+    const heightDifference = newScrollHeight - previousScrollHeightRef.current;
+    scrollRef.current.scrollTop = heightDifference;
+
+    // React のバッチ処理に委ねる、またはフラグを倒す
+    setIsLoadingMore(false);
+  }, [filteredItems]); // filteredItems が増えたタイミングだけ評価
 
   useEffect(() => {
     if (!isLoadingMore && scrollRef.current) {
@@ -543,7 +544,7 @@ const MessageRow = memo(({ item, onDeleteMessage, onEditMessage, onSelectTag, me
 
           {item.type === "image" && item.url && (
             <div className="mt-2 max-w-[95%] md:max-w-sm rounded-md overflow-hidden border border-[#2b2d31] bg-[#2b2d31] cursor-pointer">
-              <img
+              <Image
                 src={item.url}
                 onClick={() => window.open(item.url, '_blank')}
                 alt={item.content}
